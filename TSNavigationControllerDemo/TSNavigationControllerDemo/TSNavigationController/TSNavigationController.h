@@ -13,10 +13,13 @@
 
 @interface TSNavigationController : UINavigationController
 /**
- *  If yes, disable the drag back, default is NO.
+ *  If YES, disable the drag back. Default is NO.
  */
 @property (nonatomic, assign) BOOL disableDragBack;
-
+/*
+ *  If YES, will pop view controller with spring animation effect. Default is NO.
+ */
+@property (nonatomic, assign, getter=isSpringAnimated) BOOL springAnimated;
 @end
 
 @interface UIViewController (TSNavigationController)

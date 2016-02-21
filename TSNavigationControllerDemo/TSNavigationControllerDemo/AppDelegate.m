@@ -23,16 +23,15 @@
     self.window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
     
     RandomColorViewController *rvc = [[RandomColorViewController alloc] initWithNibName:@"RandomColorViewController" bundle:nil];
-    rvc.hidesTabBarWhenPushed = YES;
     
     TSNavigationController *navi = [[TSNavigationController alloc] initWithRootViewController:rvc];
+    [[UINavigationBar appearance] setBarTintColor:[UIColor whiteColor]];
+    navi.springAnimated = YES;
     
     UITabBarController *tabBarVC = [[UITabBarController alloc] init];
     [tabBarVC addChildViewController:navi];
-    
-    UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake([UIScreen mainScreen].bounds.size.width - 50, 10, 30, 20)];
-    label.text = @"testtest";
-    [tabBarVC.tabBar addSubview:label];
+    [[UITabBar appearance] setBarTintColor:[UIColor whiteColor]];
+//    tabBarVC.tabBar.backgroundColor = [UIColor whiteColor];
     
     self.window.rootViewController = tabBarVC;
     [self.window makeKeyAndVisible];

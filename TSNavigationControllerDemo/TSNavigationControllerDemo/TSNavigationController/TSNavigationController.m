@@ -48,7 +48,7 @@ typedef NS_ENUM(int, TSNavMovingState) {
 
 @implementation TSNavigationController
 
-#pragma -mark 懒加载
+#pragma mark - 懒加载
 - (NSMutableDictionary *)screenShotsDict {
     if (_screenShotsDict == nil) {
         _screenShotsDict = [NSMutableDictionary dictionary];
@@ -75,7 +75,7 @@ typedef NS_ENUM(int, TSNavMovingState) {
     return _backgroundView;
 }
 
-#pragma -mark 生命周期
+#pragma mark - 生命周期
 - (void)viewDidLoad
 {
     [super viewDidLoad];
@@ -85,7 +85,7 @@ typedef NS_ENUM(int, TSNavMovingState) {
     [pan delaysTouchesBegan];
     [self.view addGestureRecognizer:pan];
     
-    self.interactivePopGestureRecognizer.enabled = NO;
+//    self.interactivePopGestureRecognizer.enabled = NO;
 }
 
 - (void)dealloc {
@@ -137,7 +137,7 @@ typedef NS_ENUM(int, TSNavMovingState) {
     return [self.screenShotsDict objectForKey:[self stringOfPointer:viewController]];
 }
 
-#pragma mark - 重写导航栏栈控制器改变方法
+#pragma mark - 重写改变栈的方法
 /**
  *  push前添加当前界面截屏
  */
@@ -164,219 +164,87 @@ typedef NS_ENUM(int, TSNavMovingState) {
     [super pushViewController:viewController animated:animated];
     
 }
+
+- (void)animatePopWithScreenShot:(UIImage *)screenShot completion:(void (^ __nullable)(BOOL finished))completion
+{
+    self.backgroundView.hidden = NO;
+    self.lastScreenShotView.image = screenShot;
+    self.movingState = TSNavMovingStateDecelerating;
+    self.lastScreenBlackMask.alpha = 0.6 * (1 - (0 / TSNavViewW));
+    CGFloat scale = 0 / TSNavViewW * 0.05 + 0.8;
+    self.lastScreenShotView.transform = CGAffineTransformMakeScale(scale, scale);
+    
+    [UIView animateWithDuration:0.5
+                          delay:0
+         usingSpringWithDamping:self.isSpringAnimated? 0.4 : 1
+          initialSpringVelocity:self.isSpringAnimated? 0.5 : 0
+                        options:UIViewAnimationOptionCurveEaseOut
+                     animations:^{
+                         [self moveViewWithX:TSNavViewW];
+                     }
+                     completion:^(BOOL finished) {
+                         self.backgroundView.hidden = YES;
+                         self.view.frame = (CGRect){ {0, self.view.frame.origin.y}, self.view.frame.size };
+                         self.movingState = TSNavMovingStateStanby;
+                         
+                         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((0.3f) * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                             // 移动键盘
+                             if (([[[UIDevice currentDevice] systemVersion] floatValue] >= 9)) {
+                                 [[[UIApplication sharedApplication] windows] enumerateObjectsUsingBlock:^(__kindof UIWindow * _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) {
+                                     if ([obj isKindOfClass:NSClassFromString(@"UIRemoteKeyboardWindow")]) {
+                                         [(UIWindow *)obj setTransform:CGAffineTransformIdentity];
+                                     }
+                                 }];
+                             }
+                             else {
+                                 if ([[[UIApplication sharedApplication] windows] count] > 1) {
+                                     [((UIWindow *)[[[UIApplication sharedApplication] windows] objectAtIndex:1]) setTransform:CGAffineTransformIdentity];
+                                 }
+                             }
+                         });
+                         
+                         completion(finished);
+                         
+                     }];
+}
+
 /**
  *  pop后移除当前界面截屏
  */
 - (UIViewController *)popViewControllerAnimated:(BOOL)animated {
     
-    __block UIViewController *poppedVC;
     if (animated) {
-        self.backgroundView.hidden = NO;
-        if (self.topViewController.viewControllerToPop) {
-            self.lastScreenShotView.image = [self previousScreenShot];
-        }else{
-            self.lastScreenShotView.image = [self lastScreenShot];
-        }
-        self.movingState = TSNavMovingStateDecelerating;
-        self.lastScreenBlackMask.alpha = 0.6 * (1 - (0 / TSNavViewW));
-        CGFloat scale = 0 / TSNavViewW * 0.05 + 0.9;
-        self.lastScreenShotView.transform = CGAffineTransformMakeScale(scale, scale);
+        __block UIViewController *poppedVC;
+        [self animatePopWithScreenShot:self.topViewController.viewControllerToPop? [self previousScreenShot] : [self lastScreenShot]
+                            completion:^(BOOL finished) {
+                                poppedVC = [self popViewControllerCompletion];
+                            }];
+        return poppedVC;
         
-        [UIView animateWithDuration:0.5
-                              delay:0
-             usingSpringWithDamping:0.4
-              initialSpringVelocity:0.5
-                            options:UIViewAnimationOptionCurveEaseOut
-                         animations:^{
-                             [self moveViewWithX:TSNavViewW];
-                         }
-                         completion:^(BOOL finished) {
-                             self.backgroundView.hidden = YES;
-
-                             self.view.frame = (CGRect){ {0, self.view.frame.origin.y}, self.view.frame.size };
-                             self.movingState = TSNavMovingStateStanby;
-                             
-                             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((0.3f) * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                                 // 移动键盘
-                                 if (([[[UIDevice currentDevice] systemVersion] floatValue] >= 9)) {
-                                     [[[UIApplication sharedApplication] windows] enumerateObjectsUsingBlock:^(__kindof UIWindow * _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) {
-                                         if ([obj isKindOfClass:NSClassFromString(@"UIRemoteKeyboardWindow")]) {
-                                             [(UIWindow *)obj setTransform:CGAffineTransformIdentity];
-                                         }
-                                     }];
-                                 }
-                                 else {
-                                     if ([[[UIApplication sharedApplication] windows] count] > 1) {
-                                         [((UIWindow *)[[[UIApplication sharedApplication] windows] objectAtIndex:1]) setTransform:CGAffineTransformIdentity];
-                                     }
-                                 }
-                             });
-                             
-                             //如果被pop的viewController设置了viewControllerToPop属性时，则调用本方法时进行如下判断
-                             if (self.topViewController.viewControllerToPop) {
-                                 [self popToViewController:self.topViewController.viewControllerToPop animated:NO];
-                             }else{
-                                 UIViewController *lastVC = [self.viewControllers objectAtIndex:self.viewControllers.count - 2];
-                                 if (lastVC.prefersNavigationBarHidden) {
-                                     self.navigationBarHidden = YES;
-                                 }else{
-                                     self.navigationBarHidden = NO;
-                                 }
-                                 
-                                 poppedVC = [super popViewControllerAnimated:NO];
-                                 [self.screenShotsDict removeObjectForKey:[self stringOfPointer:self.topViewController]];
-                                 
-                                 if (poppedVC.hidesTabBarWhenPushed) {
-                                     BOOL previousHide = NO;
-                                     for (UIViewController *vc in self.viewControllers) {
-                                         if (vc.hidesTabBarWhenPushed) {
-                                             previousHide = YES;
-                                             break; //之前的控制器只要有一个隐藏了tabBar，此处pop时就不管tabBar的显示了
-                                         }
-                                     }
-                                     if (previousHide == NO) {
-                                         self.tabBarController.tabBar.hidden = NO;
-                                     }
-                                 }
-                             }
-                         }];
     }else{
-        //如果用户手动调用本方法时，也要执行如下判断进行正确pop
-        if (self.topViewController.viewControllerToPop) { //返回按钮会
-            [self popToViewController:self.topViewController.viewControllerToPop animated:NO];
-        }else{
-            UIViewController *lastVC = [self.viewControllers objectAtIndex:self.viewControllers.count - 2];
-            if (lastVC.prefersNavigationBarHidden) {
-                self.navigationBarHidden = YES;
-            }else{
-                self.navigationBarHidden = NO;
-            }
-            
-            poppedVC = [super popViewControllerAnimated:NO];
-            [self.screenShotsDict removeObjectForKey:[self stringOfPointer:self.topViewController]];
-            
-            if (poppedVC.hidesTabBarWhenPushed) {
-                
-                BOOL previousHide = NO;
-                for (UIViewController *vc in self.viewControllers) {
-                    if (vc.hidesTabBarWhenPushed) {
-                        previousHide = YES;
-                        break;
-                    }
-                }
-                if (previousHide == NO) {
-                    self.tabBarController.tabBar.hidden = NO;
-                }
-                
-            }
-        }
+        return [self popViewControllerCompletion];
     }
-    
-    return poppedVC;
 }
 
-//pop到指定界面需要移除相应的界面
-- (NSArray<UIViewController *> *)popToViewController:(UIViewController *)viewController animated:(BOOL)animated
+- (UIViewController *)popViewControllerCompletion
 {
-    __block NSArray *poppedVCs;
-    if (animated) {
-        self.backgroundView.hidden = NO;
-        self.lastScreenShotView.image = [self screenShotOfViewController:viewController];
-        self.movingState = TSNavMovingStateDecelerating;
-        self.lastScreenBlackMask.alpha = 0.6 * (1 - (0 / TSNavViewW));
-        CGFloat scale = 0 / TSNavViewW * 0.05 + 0.9;
-        self.lastScreenShotView.transform = CGAffineTransformMakeScale(scale, scale);
-        
-        [UIView animateWithDuration:0.5
-                              delay:0
-             usingSpringWithDamping:0.4
-              initialSpringVelocity:0.5
-                            options:UIViewAnimationOptionCurveEaseOut
-                         animations:^{
-                             [self moveViewWithX:TSNavViewW];
-                         }
-                         completion:^(BOOL finished) {
-                             self.backgroundView.hidden = YES;
-                             
-                             self.view.frame = (CGRect){ {0, self.view.frame.origin.y}, self.view.frame.size };
-                             self.movingState = TSNavMovingStateStanby;
-                             
-                             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((0.3f) * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                                 // 移动键盘
-                                 if (([[[UIDevice currentDevice] systemVersion] floatValue] >= 9)) {
-                                     [[[UIApplication sharedApplication] windows] enumerateObjectsUsingBlock:^(__kindof UIWindow * _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) {
-                                         if ([obj isKindOfClass:NSClassFromString(@"UIRemoteKeyboardWindow")]) {
-                                             [(UIWindow *)obj setTransform:CGAffineTransformIdentity];
-                                         }
-                                     }];
-                                 }
-                                 else {
-                                     if ([[[UIApplication sharedApplication] windows] count] > 1) {
-                                         [((UIWindow *)[[[UIApplication sharedApplication] windows] objectAtIndex:1]) setTransform:CGAffineTransformIdentity];
-                                     }
-                                 }
-                             });
-                             
-                             //导航条的显示和隐藏
-                             if (viewController.prefersNavigationBarHidden) {
-                                 self.navigationBarHidden = YES;
-                             }else{
-                                 self.navigationBarHidden = NO;
-                             }
-                             
-                             //删除被pop的viewControllers的截屏
-                             poppedVCs = [super popToViewController:viewController animated:NO];
-                             for (UIViewController *vc in poppedVCs) {
-                                 [self.screenShotsDict removeObjectForKey:[self stringOfPointer:vc]];
-                             }
-                             
-                             //判断否需要显示tabBar
-                             //hidesTabBarWhenPushed属性只是在viewController被push时执行一次tabBar的hidden，在viewController被pop时检查之前是不是它hide了tabBar，如果是(栈中在viewController之前没有其它viewController设置过hidesTabBarWhenPushed这个属性)，就取消hide，否则就不操作
-                             BOOL poppedVCsHideTabBar = NO;
-                             for (UIViewController *vc in poppedVCs) {
-                                 if (vc.hidesTabBarWhenPushed) {
-                                     poppedVCsHideTabBar = YES;
-                                     break;//pop出的控制器只要有一个隐藏了tabBar，就需要进一步判断之前的控制器是否隐藏tabBar
-                                 }
-                             }
-                             if (poppedVCsHideTabBar) {
-                                 
-                                 BOOL previousHide = NO;
-                                 for (UIViewController *vc in self.viewControllers) {
-                                     if (vc.hidesTabBarWhenPushed) {
-                                         previousHide = YES;
-                                         break; //之前的控制器只要有一个隐藏了tabBar，此处pop时就不管tabBar的显示了
-                                     }
-                                 }
-                                 if (previousHide == NO) {
-                                     self.tabBarController.tabBar.hidden = NO;
-                                 }
-                                 
-                             }
-                         }];
+    //如果用户手动调用本方法时，也要执行如下判断进行正确pop
+    if (self.topViewController.viewControllerToPop) { //返回按钮会
+        [self popToViewController:self.topViewController.viewControllerToPop animated:NO];
+        return nil;
     }else{
-        //导航条的显示和隐藏
-        if (viewController.prefersNavigationBarHidden) {
+        UIViewController *lastVC = [self.viewControllers objectAtIndex:self.viewControllers.count>1? self.viewControllers.count - 2 : 0];
+        if (lastVC.prefersNavigationBarHidden) {
             self.navigationBarHidden = YES;
         }else{
             self.navigationBarHidden = NO;
         }
         
-        //删除被pop的viewControllers的截屏
-        poppedVCs = [super popToViewController:viewController animated:NO];
-        for (UIViewController *vc in poppedVCs) {
-            [self.screenShotsDict removeObjectForKey:[self stringOfPointer:vc]];
-        }
+        UIViewController *poppedVC = [super popViewControllerAnimated:NO];
+        [self.screenShotsDict removeObjectForKey:[self stringOfPointer:self.topViewController]];
         
-        //判断否需要显示tabBar
-        BOOL poppedVCsHideTabBar = NO;
-        for (UIViewController *vc in poppedVCs) {
-            if (vc.hidesTabBarWhenPushed) {
-                poppedVCsHideTabBar = YES;
-                break;
-            }
-        }
-        if (poppedVCsHideTabBar) {
+        if (poppedVC.hidesTabBarWhenPushed) {
+            
             BOOL previousHide = NO;
             for (UIViewController *vc in self.viewControllers) {
                 if (vc.hidesTabBarWhenPushed) {
@@ -389,6 +257,62 @@ typedef NS_ENUM(int, TSNavMovingState) {
             }
         }
         
+        return poppedVC;
+    }
+}
+
+//pop到指定界面需要移除相应的界面
+- (NSArray<UIViewController *> *)popToViewController:(UIViewController *)viewController animated:(BOOL)animated
+{
+    
+    if (animated) {
+        
+        __block NSArray *poppedVCs;
+        [self animatePopWithScreenShot:[self screenShotOfViewController:viewController] completion:^(BOOL finished) {
+            poppedVCs = [self popToViewControllerCompletion:viewController];
+        }];
+        return poppedVCs;
+    }else{
+        return [self popToViewControllerCompletion:viewController];
+    }
+    
+//    return poppedVCs;
+}
+
+- (NSArray<UIViewController *> *)popToViewControllerCompletion:(UIViewController *)viewController
+{
+    //导航条的显示和隐藏
+    if (viewController.prefersNavigationBarHidden) {
+        self.navigationBarHidden = YES;
+    }else{
+        self.navigationBarHidden = NO;
+    }
+    
+    //删除被pop的viewControllers的截屏
+    NSArray *poppedVCs = [super popToViewController:viewController animated:NO];
+    for (UIViewController *vc in poppedVCs) {
+        [self.screenShotsDict removeObjectForKey:[self stringOfPointer:vc]];
+    }
+    
+    //判断否需要显示tabBar
+    BOOL poppedVCsHideTabBar = NO;
+    for (UIViewController *vc in poppedVCs) {
+        if (vc.hidesTabBarWhenPushed) {
+            poppedVCsHideTabBar = YES;
+            break;
+        }
+    }
+    if (poppedVCsHideTabBar) {
+        BOOL previousHide = NO;
+        for (UIViewController *vc in self.viewControllers) {
+            if (vc.hidesTabBarWhenPushed) {
+                previousHide = YES;
+                break;
+            }
+        }
+        if (previousHide == NO) {
+            self.tabBarController.tabBar.hidden = NO;
+        }
     }
     
     return poppedVCs;
@@ -401,83 +325,37 @@ typedef NS_ENUM(int, TSNavMovingState) {
         return nil;
     }
     
-    __block NSArray *poppedVCs;
     if (animated) {
-        self.backgroundView.hidden = NO;
-        self.lastScreenShotView.image = [self screenShotOfViewController:[self.viewControllers firstObject]];
-        self.movingState = TSNavMovingStateDecelerating;
-        self.lastScreenBlackMask.alpha = 0.6 * (1 - (0 / TSNavViewW));
-        CGFloat scale = 0 / TSNavViewW * 0.05 + 0.9;
-        self.lastScreenShotView.transform = CGAffineTransformMakeScale(scale, scale);
-        
-        [UIView animateWithDuration:0.5
-                              delay:0
-             usingSpringWithDamping:0.4
-              initialSpringVelocity:0.5
-                            options:UIViewAnimationOptionCurveEaseOut
-                         animations:^{
-                             [self moveViewWithX:TSNavViewW];
-                         }
-                         completion:^(BOOL finished) {
-                             self.backgroundView.hidden = YES;
-                             
-                             self.view.frame = (CGRect){ {0, self.view.frame.origin.y}, self.view.frame.size };
-                             self.movingState = TSNavMovingStateStanby;
-                             
-                             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((0.3f) * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                                 // 移动键盘
-                                 if (([[[UIDevice currentDevice] systemVersion] floatValue] >= 9)) {
-                                     [[[UIApplication sharedApplication] windows] enumerateObjectsUsingBlock:^(__kindof UIWindow * _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) {
-                                         if ([obj isKindOfClass:NSClassFromString(@"UIRemoteKeyboardWindow")]) {
-                                             [(UIWindow *)obj setTransform:CGAffineTransformIdentity];
-                                         }
-                                     }];
-                                 }
-                                 else {
-                                     if ([[[UIApplication sharedApplication] windows] count] > 1) {
-                                         [((UIWindow *)[[[UIApplication sharedApplication] windows] objectAtIndex:1]) setTransform:CGAffineTransformIdentity];
-                                     }
-                                 }
-                             });
-                             
-                             //导航条的显示和隐藏
-                             UIViewController *rootVC = self.viewControllers.firstObject;
-                             if (rootVC.prefersNavigationBarHidden) {
-                                 self.navigationBarHidden = YES;
-                             }else{
-                                 self.navigationBarHidden = NO;
-                             }
-                             
-                             //删除被pop的viewControllers的截屏
-                             poppedVCs = [super popToRootViewControllerAnimated:NO];
-                             for (UIViewController *vc in poppedVCs) {
-                                 [self.screenShotsDict removeObjectForKey:[self stringOfPointer:vc]];
-                             }
-                             
-                             //判断否需要显示tabBar
-                             if (!rootVC.hidesTabBarWhenPushed) {
-                                self.tabBarController.tabBar.hidden = NO;
-                             }
-                         }];
+        __block NSArray *poppedVCs;
+        [self animatePopWithScreenShot:[self screenShotOfViewController:[self.viewControllers firstObject]] completion:^(BOOL finished) {
+            poppedVCs = [self popToRootViewControllerCompletion];
+        }];
+        return poppedVCs;
     }else{
-        //导航条的显示和隐藏
-        UIViewController *rootVC = self.viewControllers.firstObject;
-        if (rootVC.prefersNavigationBarHidden) {
-            self.navigationBarHidden = YES;
-        }else{
-            self.navigationBarHidden = NO;
-        }
-        
-        //删除被pop的viewControllers的截屏
-        poppedVCs = [super popToRootViewControllerAnimated:animated];
-        for (UIViewController *vc in poppedVCs) {
-            [self.screenShotsDict removeObjectForKey:[self stringOfPointer:vc]];
-        }
-        
-        //判断否需要显示tabBar
-        if (!rootVC.hidesTabBarWhenPushed) {
-            self.tabBarController.tabBar.hidden = NO;
-        }//如果root viewController的hidesTabBarWhenPushed设置为YES，则root viewController在被push时就已经做了tabBar的隐藏，此处不应再有操作。
+        return [self popToRootViewControllerCompletion];
+    }
+    
+}
+
+- (nullable NSArray<__kindof UIViewController *> *)popToRootViewControllerCompletion
+{
+    //导航条的显示和隐藏
+    UIViewController *rootVC = self.viewControllers.firstObject;
+    if (rootVC.prefersNavigationBarHidden) {
+        self.navigationBarHidden = YES;
+    }else{
+        self.navigationBarHidden = NO;
+    }
+    
+    //删除被pop的viewControllers的截屏
+    NSArray *poppedVCs = [super popToRootViewControllerAnimated:NO];
+    for (UIViewController *vc in poppedVCs) {
+        [self.screenShotsDict removeObjectForKey:[self stringOfPointer:vc]];
+    }
+    
+    //判断否需要显示tabBar
+    if (!rootVC.hidesTabBarWhenPushed) {
+        self.tabBarController.tabBar.hidden = NO;
     }
     
     return poppedVCs;
@@ -578,8 +456,8 @@ typedef NS_ENUM(int, TSNavMovingState) {
     self.movingState = TSNavMovingStateDecelerating;
     [UIView animateWithDuration:TSAnimationDuration
                           delay:0
-         usingSpringWithDamping:0.3
-          initialSpringVelocity:initialSpringVelocity
+         usingSpringWithDamping:self.isSpringAnimated? 0.3 : 1
+          initialSpringVelocity:self.isSpringAnimated? initialSpringVelocity : 0
                         options:UIViewAnimationOptionCurveEaseOut
                      animations:^{
                          [self moveViewWithX:pop ? TSNavViewW : 0];
@@ -661,6 +539,7 @@ typedef NS_ENUM(int, TSNavMovingState) {
     // Forward to primary implementation.
     [self AOP_viewWillAppear:animated];
     
+    //设置navigationController的根视图控制器的时候，系统会调用push方法。此时，由于tabBarController还不存在，故根视图控制器的hidesTabBarWhenPushed属性在push方法执行时无法起作用
     if (self.hidesTabBarWhenPushed && self.navigationController.viewControllers.count == 1) {
         self.tabBarController.tabBar.hidden = YES;
     }

@@ -25,12 +25,17 @@
                                                 alpha:1.0f];
 }
 
+- (void)viewWillAppear:(BOOL)animated
+{
+    self.title = [NSString stringWithFormat:@"%ld",self.navigationController.viewControllers.count];
+}
+
 - (IBAction)push:(id)sender {
 
     if (self.navigationController.viewControllers.count == 6){
         
-        [self.navigationController popViewControllerAnimated:NO];
-//        [self.navigationController popToRootViewControllerAnimated:YES];
+//        [self.navigationController popViewControllerAnimated:NO];
+        [self.navigationController popToRootViewControllerAnimated:YES];
 //        [self.navigationController popToViewController:self.navigationController.viewControllers[0] animated:YES];
     }else{
         
@@ -41,11 +46,13 @@
         }
         
         if (self.navigationController.viewControllers.count == 2) {
+            vc.prefersNavigationBarHidden = YES;
             vc.hidesTabBarWhenPushed = NO; //此处意思是当push时不执行隐藏tabBar的操作，故已隐藏的tabBar不会重新显示出来
         }
         
         if (self.navigationController.viewControllers.count == 3) {
             vc.viewControllerToPop = self.navigationController.viewControllers[0];
+            
         }
         
         if (self.navigationController.viewControllers.count == 4) {
@@ -55,7 +62,6 @@
         
         if (self.navigationController.viewControllers.count == 5){
             vc.prefersNavigationBarHidden = YES;
-            vc.viewControllerToPop = self.navigationController.viewControllers.firstObject;
         }
         
         [self.navigationController pushViewController:vc  animated:YES];
