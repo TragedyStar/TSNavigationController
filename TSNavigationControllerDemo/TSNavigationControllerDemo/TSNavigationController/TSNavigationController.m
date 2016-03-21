@@ -1,6 +1,6 @@
 //
 //  TSNavigationController.m
-//  TSNavigationControllerDemo
+//  TSNavigationController
 //
 //  Created by TragedyStar on 16/2/19.
 //  Copyright © 2016年 TS. All rights reserved.
@@ -9,7 +9,7 @@
 #import "TSNavigationController.h"
 #import <objc/runtime.h>
 
-#define enableDrag (self.viewControllers.count > 1 && !self.disableDragBack)
+#define enableDrag (self.viewControllers.count > 1 && !self.disableDragPop && self.topViewController.enableDragPop)
 
 #define TSKeyWindow     [[UIApplication sharedApplication] keyWindow]
 #define TSNavViewW      [UIScreen mainScreen].bounds.size.width
@@ -26,23 +26,23 @@ typedef NS_ENUM(int, TSNavMovingState) {
 /**
  *  black mask of last screen 上一个界面的黑色渐变遮罩
  */
-@property (nonatomic, strong) UIView *lastScreenBlackMask;
+@property (nonatomic, strong) UIView *lastScreenBlackMaskView;
 /**
  *  screenshot of last screen 上一个界面的截屏
  */
-@property (nonatomic, strong) UIImageView *lastScreenShotView;
+@property (nonatomic, strong) UIImageView *lastScreenShotImageView;
 /**
  *  black backgroud of last screenshot 上一个界面的截屏的黑色背景
  */
-@property (nonatomic,retain) UIView *backgroundView;
+@property (nonatomic, strong) UIView *backgroundView;
 /**
  *  dictionary saved string of controller's pointer/controller's screenshot pairs. key:string of controller's pointer value:screenshot  存放截屏的字典 key：控制器指针字符串  value：截屏图片
  */
-@property (nonatomic,retain) NSMutableDictionary *screenShotsDict;
+@property (nonatomic, strong) NSMutableDictionary *screenShotsDict;
 /**
  *  moving state 移动状态
  */
-@property (nonatomic,assign) TSNavMovingState movingState;
+@property (nonatomic, assign) TSNavMovingState movingState;
 
 @end
 
@@ -60,17 +60,17 @@ typedef NS_ENUM(int, TSNavMovingState) {
         _backgroundView = [[UIView alloc]initWithFrame:self.view.bounds];
         _backgroundView.backgroundColor = [UIColor blackColor];
         
-        _lastScreenShotView = [[UIImageView alloc] initWithFrame:_backgroundView.bounds];
-        _lastScreenShotView.backgroundColor = [UIColor whiteColor];
-        [_backgroundView addSubview:_lastScreenShotView];
+        _lastScreenShotImageView = [[UIImageView alloc] initWithFrame:_backgroundView.bounds];
+        _lastScreenShotImageView.backgroundColor = [UIColor whiteColor];
+        [_backgroundView addSubview:_lastScreenShotImageView];
         
-        _lastScreenBlackMask = [[UIView alloc] initWithFrame:_backgroundView.bounds];
-        _lastScreenBlackMask.backgroundColor = [UIColor blackColor];
-        [_backgroundView addSubview:_lastScreenBlackMask];
+        _lastScreenBlackMaskView = [[UIView alloc] initWithFrame:_backgroundView.bounds];
+        _lastScreenBlackMaskView.backgroundColor = [UIColor blackColor];
+        [_backgroundView addSubview:_lastScreenBlackMaskView];
     }
     
     if (_backgroundView.superview == nil) {
-        [self.view.superview insertSubview:_backgroundView belowSubview:self.view];
+        [self.view.superview insertSubview:_backgroundView belowSubview:self.view];//每次pop之前要将backgroundView置于self.view的下一层，因为pop的时候是在移动self.view
     }
     return _backgroundView;
 }
@@ -85,7 +85,7 @@ typedef NS_ENUM(int, TSNavMovingState) {
     [pan delaysTouchesBegan];
     [self.view addGestureRecognizer:pan];
     
-//    self.interactivePopGestureRecognizer.enabled = NO;
+    //    self.interactivePopGestureRecognizer.enabled = NO;
 }
 
 - (void)dealloc {
@@ -118,9 +118,13 @@ typedef NS_ENUM(int, TSNavMovingState) {
 /**
  *  获取前一个界面的截屏
  */
-- (UIImage *)lastScreenShot {
-    UIViewController *lastVC = [self.viewControllers objectAtIndex:self.viewControllers.count - 2];
-    
+- (UIImage *)lastScreenShot
+{
+    NSUInteger index = 0;
+    if (self.viewControllers.count > 2) {
+        index = self.viewControllers.count - 2;
+    }
+    UIViewController *lastVC = [self.viewControllers objectAtIndex:index];
     return [self.screenShotsDict objectForKey:[self stringOfPointer:lastVC]];
 }
 /*
@@ -143,20 +147,22 @@ typedef NS_ENUM(int, TSNavMovingState) {
  */
 - (void)pushViewController:(UIViewController *)viewController animated:(BOOL)animated {
     
-    
+    //push navigationController的根控制器时，不截屏
     if (self.viewControllers.count > 0) {
         [self.screenShotsDict setObject:[self capture] forKey:[self stringOfPointer:self.topViewController]];
     }
     
+    //push之前判断是否需要隐藏tabbar
     if (viewController.hidesTabBarWhenPushed)
     {
-        self.tabBarController.tabBar.hidden = YES;
+        self.tabBarController.tabBar.hidden = YES;//此处不需要判断是否有tabbar
     }
     
-    
+    //push之前判断隐藏或者显示navigationBar。此处的隐藏和显示不是最自然的方式
     if (viewController.prefersNavigationBarHidden)
     {
         self.navigationBarHidden = YES;
+        
     }else{
         self.navigationBarHidden = NO;
     }
@@ -167,12 +173,12 @@ typedef NS_ENUM(int, TSNavMovingState) {
 
 - (void)animatePopWithScreenShot:(UIImage *)screenShot completion:(void (^ __nullable)(BOOL finished))completion
 {
-    self.backgroundView.hidden = NO;
-    self.lastScreenShotView.image = screenShot;
+    self.backgroundView.hidden = NO;//调用self.backgroundView时，会将其置于self.view的下一层
+    self.lastScreenShotImageView.image = screenShot;
     self.movingState = TSNavMovingStateDecelerating;
-    self.lastScreenBlackMask.alpha = 0.6 * (1 - (0 / TSNavViewW));
-    CGFloat scale = 0 / TSNavViewW * 0.05 + 0.8;
-    self.lastScreenShotView.transform = CGAffineTransformMakeScale(scale, scale);
+    self.lastScreenBlackMaskView.alpha = 0.6 /* * (1 - (0 / TSNavViewW))*/;//初始值0.6
+    CGFloat scale = 0.8 /* + (0 / TSNavViewW * 0.05)*/ ;//初始值0.8
+    self.lastScreenShotImageView.transform = CGAffineTransformMakeScale(scale, scale);
     
     [UIView animateWithDuration:0.5
                           delay:0
@@ -180,14 +186,14 @@ typedef NS_ENUM(int, TSNavMovingState) {
           initialSpringVelocity:self.isSpringAnimated? 0.5 : 0
                         options:UIViewAnimationOptionCurveEaseOut
                      animations:^{
-                         [self moveViewWithX:TSNavViewW];
+                         [self moveViewWithX:TSNavViewW];//最终值：黑色遮罩的alpha为0，上一个界面截图的transform为1，self.view的frame为{TSNavViewW，0，TSNavViewW，self.view.frame.size.height};
                      }
                      completion:^(BOOL finished) {
                          self.backgroundView.hidden = YES;
-                         self.view.frame = (CGRect){ {0, self.view.frame.origin.y}, self.view.frame.size };
+                         self.view.frame = (CGRect){ {0, self.view.frame.origin.y}, self.view.frame.size };//将self.view重新移动到屏幕中
                          self.movingState = TSNavMovingStateStanby;
                          
-                         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((0.3f) * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((0.5f) * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
                              // 移动键盘
                              if (([[[UIDevice currentDevice] systemVersion] floatValue] >= 9)) {
                                  [[[UIApplication sharedApplication] windows] enumerateObjectsUsingBlock:^(__kindof UIWindow * _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) {
@@ -231,7 +237,7 @@ typedef NS_ENUM(int, TSNavMovingState) {
     //如果用户手动调用本方法时，也要执行如下判断进行正确pop
     if (self.topViewController.viewControllerToPop) { //返回按钮会
         [self popToViewController:self.topViewController.viewControllerToPop animated:NO];
-        return nil;
+        return nil; //由于此时pop了多个controller，此处无法返回pop了哪个controller，故返回nil
     }else{
         UIViewController *lastVC = [self.viewControllers objectAtIndex:self.viewControllers.count>1? self.viewControllers.count - 2 : 0];
         if (lastVC.prefersNavigationBarHidden) {
@@ -243,6 +249,7 @@ typedef NS_ENUM(int, TSNavMovingState) {
         UIViewController *poppedVC = [super popViewControllerAnimated:NO];
         [self.screenShotsDict removeObjectForKey:[self stringOfPointer:self.topViewController]];
         
+        //判断只有当即将被POP的控制器在stack中是第一个设置hidesTabBarWhenPushed属性时，才显示出tabbar
         if (poppedVC.hidesTabBarWhenPushed) {
             
             BOOL previousHide = NO;
@@ -275,8 +282,6 @@ typedef NS_ENUM(int, TSNavMovingState) {
     }else{
         return [self popToViewControllerCompletion:viewController];
     }
-    
-//    return poppedVCs;
 }
 
 - (NSArray<UIViewController *> *)popToViewControllerCompletion:(UIViewController *)viewController
@@ -302,7 +307,7 @@ typedef NS_ENUM(int, TSNavMovingState) {
             break;
         }
     }
-    if (poppedVCsHideTabBar) {
+    if (poppedVCsHideTabBar) {//pop出去的多个控制器中，有设置了hidesTabBarWhenPushed属性的。
         BOOL previousHide = NO;
         for (UIViewController *vc in self.viewControllers) {
             if (vc.hidesTabBarWhenPushed) {
@@ -389,10 +394,10 @@ typedef NS_ENUM(int, TSNavMovingState) {
     // 设置frame的x
     self.view.frame = (CGRect){ {x, self.view.frame.origin.y}, self.view.frame.size};
     // 设置黑色遮罩的透明度，范围在[0, 0.6]之间
-    self.lastScreenBlackMask.alpha = 0.6 * (1 - (x / TSNavViewW));
+    self.lastScreenBlackMaskView.alpha = 0.6 * (1 - (x / TSNavViewW));
     // 设置上一个截屏的缩放比例，范围在[0.95, 1]之间
     CGFloat scale = x / TSNavViewW * 0.05 + 0.95;
-    self.lastScreenShotView.transform = CGAffineTransformMakeScale(scale, scale);
+    self.lastScreenShotImageView.transform = CGAffineTransformMakeScale(scale, scale);
     
     // 移动键盘
     if (([[[UIDevice currentDevice] systemVersion] floatValue] >= 9)) {//iOS9 之后
@@ -419,9 +424,9 @@ typedef NS_ENUM(int, TSNavMovingState) {
             self.movingState = TSNavMovingStateDragBegan;
             self.backgroundView.hidden = NO;
             if (self.topViewController.viewControllerToPop) {
-                self.lastScreenShotView.image = [self previousScreenShot];
+                self.lastScreenShotImageView.image = [self previousScreenShot];
             }else{
-                self.lastScreenShotView.image = [self lastScreenShot];
+                self.lastScreenShotImageView.image = [self lastScreenShot];
             }
         }
     }//结束或取消拖动
@@ -525,13 +530,37 @@ typedef NS_ENUM(int, TSNavMovingState) {
         Method originalMethod = class_getInstanceMethod(class, originalSelector);
         Method swizzledMethod = class_getInstanceMethod(class, swizzledSelector);
         
+        //如果originalSelector不存在，则添加originalSelector方法，方法实现为AOP方法的实现。如果存在则不添加方法，并返回success为NO
         BOOL success = class_addMethod(class, originalSelector, method_getImplementation(swizzledMethod), method_getTypeEncoding(swizzledMethod));
         if (success) {
+            //将AOP方法的实现设置成空
             class_replaceMethod(class, swizzledSelector, method_getImplementation(originalMethod), method_getTypeEncoding(originalMethod));
         } else {
             method_exchangeImplementations(originalMethod, swizzledMethod);
         }
+        
+        
+        SEL viewDidLoadSEL = @selector(viewDidLoad);
+        SEL AOP_viewDidLoadSEL = @selector(AOP_viewDidLoad);
+        
+        Method viewDidLoadMethod = class_getInstanceMethod(class, viewDidLoadSEL);
+        Method AOP_viewDidLoadMethod = class_getInstanceMethod(class, AOP_viewDidLoadSEL);
+        
+        BOOL success1 = class_addMethod(class, viewDidLoadSEL, method_getImplementation(AOP_viewDidLoadMethod), method_getTypeEncoding(AOP_viewDidLoadSEL));
+        if (success1) {
+            class_replaceMethod(class, AOP_viewDidLoadSEL, method_getImplementation(viewDidLoadMethod), method_getTypeEncoding(viewDidLoadMethod));
+        } else {
+            method_exchangeImplementations(viewDidLoadMethod, AOP_viewDidLoadMethod);
+        }
     });
+}
+
+//初始化控制器的属性写在此处，由子控制器在viewDidLoad中的[super viewDidLoad]调用
+- (void)AOP_viewDidLoad
+{
+    [self AOP_viewDidLoad];
+    
+    self.enableDragPop = YES;
 }
 
 - (void)AOP_viewWillAppear:(BOOL)animated
@@ -539,15 +568,32 @@ typedef NS_ENUM(int, TSNavMovingState) {
     // Forward to primary implementation.
     [self AOP_viewWillAppear:animated];
     
-    //设置navigationController的根视图控制器的时候，系统会调用push方法。此时，由于tabBarController还不存在，故根视图控制器的hidesTabBarWhenPushed属性在push方法执行时无法起作用
     if (self.hidesTabBarWhenPushed && self.navigationController.viewControllers.count == 1) {
         self.tabBarController.tabBar.hidden = YES;
     }
 }
 
-- (void)setViewControllerToPop:(UIViewController *)ViewControllerToPop
+#pragma -mark 是否开启拖拽返回
+- (void)setEnableDragPop:(BOOL)enableDragPop
 {
-    objc_setAssociatedObject(self, @selector(viewControllerToPop), ViewControllerToPop, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(self, @selector(enableDragPop), @(enableDragPop), OBJC_ASSOCIATION_ASSIGN);
+}
+
+- (BOOL)enableDragPop
+{
+    NSNumber *number = objc_getAssociatedObject(self, _cmd);
+    if (number) {
+        return number.boolValue;
+    }else{
+        self.enableDragPop = NO;
+        return NO;
+    }
+}
+
+#pragma -mark 要pop到的控制器
+- (void)setViewControllerToPop:(UIViewController *)viewControllerToPop
+{
+    objc_setAssociatedObject(self, @selector(viewControllerToPop), viewControllerToPop, OBJC_ASSOCIATION_ASSIGN);
 }
 
 - (UIViewController *)viewControllerToPop
@@ -555,6 +601,7 @@ typedef NS_ENUM(int, TSNavMovingState) {
     return objc_getAssociatedObject(self, _cmd);
 }
 
+#pragma -mark 是否隐藏navigationBar
 - (void)setPrefersNavigationBarHidden:(BOOL)prefersNavigationBarHidden
 {
     objc_setAssociatedObject(self, @selector(prefersNavigationBarHidden), @(prefersNavigationBarHidden), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -571,6 +618,7 @@ typedef NS_ENUM(int, TSNavMovingState) {
     }
 }
 
+#pragma -mark 是否隐藏tabbar
 - (void)setHidesTabBarWhenPushed:(BOOL)hidesTabBarWhenPushed
 {
     objc_setAssociatedObject(self, @selector(hidesTabBarWhenPushed), @(hidesTabBarWhenPushed), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -585,6 +633,25 @@ typedef NS_ENUM(int, TSNavMovingState) {
         self.hidesTabBarWhenPushed = NO;
         return NO;
     }
+}
+
+#pragma -mark 自己所在的栈中的前一个控制器
+- (UIViewController *)lastViewControllerInStack
+{
+    if (!self.navigationController) {
+        NSInteger index = self.navigationController.viewControllers.count-2;
+        if (index < 0) {
+            index = 0;
+        }
+        return self.navigationController.viewControllers[index];
+    }
+    return nil;
+}
+
+#pragma -mark 自己所在栈中的第一个控制器
+- (UIViewController *)rootViewControllerInStack
+{
+    return [self.navigationController.viewControllers firstObject];
 }
 
 @end
