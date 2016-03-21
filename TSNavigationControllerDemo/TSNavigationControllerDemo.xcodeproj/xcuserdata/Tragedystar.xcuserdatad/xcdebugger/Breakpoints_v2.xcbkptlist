@@ -15,7 +15,7 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "268"
             endingLineNumber = "268"
-            landmarkName = "-popToViewController:animated:"
+            landmarkName = "-popViewControllerCompletion"
             landmarkType = "5">
          </BreakpointContent>
       </BreakpointProxy>

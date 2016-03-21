@@ -546,7 +546,7 @@ typedef NS_ENUM(int, TSNavMovingState) {
         Method viewDidLoadMethod = class_getInstanceMethod(class, viewDidLoadSEL);
         Method AOP_viewDidLoadMethod = class_getInstanceMethod(class, AOP_viewDidLoadSEL);
         
-        BOOL success1 = class_addMethod(class, viewDidLoadSEL, method_getImplementation(AOP_viewDidLoadMethod), method_getTypeEncoding(AOP_viewDidLoadSEL));
+        BOOL success1 = class_addMethod(class, viewDidLoadSEL, method_getImplementation(AOP_viewDidLoadMethod), method_getTypeEncoding(AOP_viewDidLoadMethod));
         if (success1) {
             class_replaceMethod(class, AOP_viewDidLoadSEL, method_getImplementation(viewDidLoadMethod), method_getTypeEncoding(viewDidLoadMethod));
         } else {
