@@ -85,7 +85,7 @@ typedef NS_ENUM(int, TSNavMovingState) {
     [pan delaysTouchesBegan];
     [self.view addGestureRecognizer:pan];
     
-    //    self.interactivePopGestureRecognizer.enabled = NO;
+    self.interactivePopGestureRecognizer.enabled = NO;
 }
 
 - (void)dealloc {
@@ -506,6 +506,19 @@ typedef NS_ENUM(int, TSNavMovingState) {
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch {
     return enableDrag;
 }
+
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer
+{
+    if ([gestureRecognizer isKindOfClass:[UIPanGestureRecognizer class]]) {
+        CGPoint translation = [((UIPanGestureRecognizer *)gestureRecognizer) translationInView:self.view];
+        if (translation.x < 0) {
+            return NO;
+        }
+        
+    }
+    return YES;
+}
+
 ///**
 // *  优先响应其他手势
 // */
@@ -638,7 +651,7 @@ typedef NS_ENUM(int, TSNavMovingState) {
 #pragma -mark 自己所在的栈中的前一个控制器
 - (UIViewController *)lastViewControllerInStack
 {
-    if (!self.navigationController) {
+    if (self.navigationController) {
         NSInteger index = self.navigationController.viewControllers.count-2;
         if (index < 0) {
             index = 0;

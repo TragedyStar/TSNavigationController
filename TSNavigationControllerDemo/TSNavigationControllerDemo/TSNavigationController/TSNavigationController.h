@@ -55,11 +55,11 @@
 /*
  *  The last view controller in the navigaiton controller's stack which this view controller is in.
  */
-@property (nonatomic, readonly, weak) UIViewController *lastViewControllerInStack;
+@property (nonatomic, readonly, weak)  UIViewController * _Nullable lastViewControllerInStack;
 
 /*
  *  The first view controller in the navigaiton controller's stack which this view controller is in.
  */
-@property (nonatomic, readonly, weak) UIViewController *rootViewControllerInStack;
+@property (nonatomic, readonly, weak) UIViewController * _Nullable rootViewControllerInStack;
 
 @end
